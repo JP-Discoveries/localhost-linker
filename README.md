@@ -70,3 +70,7 @@ cargo tauri build                              # NSIS installer in target/releas
   the dev server's process. The app can't change that for you.
 - Servers inside WSL 2 in its default NAT mode aren't reachable from a phone. Turn on
   mirrored networking in WSL to fix that.
+
+## License
+
+[MIT](LICENSE)
