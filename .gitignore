@@ -1,0 +1,21 @@
+# Build output
+target/
+src-tauri/gen/
+node_modules/
+
+# Claude Code local config (machine-specific paths)
+.claude/
+
+# IDE local state
+.vs/
+.idea/
+.vscode/
+
+# Windows shell artifacts
+*.lnk
+desktop.ini
+Thumbs.db
+ehthumbs.db
+
+# OS / misc
+*.log

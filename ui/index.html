@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Localhost Linker</title>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #f4f5f7; --text: #16181d; --muted: #667085; --line: #e4e7ec;
+    --accent: #2563eb; --accent-text: #ffffff; --ok-bg: #e7f6ec; --ok: #117a3a;
+    --warn-bg: #fff4e0; --warn: #9a5b00; --hover: #eef1f5; --sel: #e6eefe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1d22; --panel: #24272e; --text: #eceef2; --muted: #9aa3b2; --line: #333741;
+      --accent: #4c84ff; --accent-text: #ffffff; --ok-bg: #173323; --ok: #6fd69a;
+      --warn-bg: #3a2c12; --warn: #f3bd62; --hover: #2a2e36; --sel: #243453;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column; overflow: hidden;
+    border: 1px solid var(--line); user-select: none; cursor: default;
+  }
+  header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 13px; font-weight: 600; margin: 0; flex: 1; }
+  .ip { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .icon-btn { border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 4px; cursor: pointer; }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+
+  #focus { padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
+  .qr { width: 196px; height: 196px; background: #fff; border-radius: 8px; padding: 0; overflow: hidden; display: grid; place-items: center; }
+  .qr svg { width: 100%; height: 100%; display: block; }
+  .no-qr { width: 196px; height: 196px; border-radius: 8px; background: var(--panel); color: var(--muted); display: grid; place-items: center; text-align: center; padding: 16px; }
+  .url-row { display: flex; gap: 6px; width: 100%; }
+  .url { flex: 1; min-width: 0; font: 12px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--panel); border-radius: 6px; padding: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+  .btn { border: 0; border-radius: 6px; padding: 0 12px; background: var(--accent); color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; }
+  .btn:hover { filter: brightness(1.08); }
+  .hint { width: 100%; font-size: 12px; border-radius: 6px; padding: 7px 9px; }
+  .hint.warn { background: var(--warn-bg); color: var(--warn); }
+  .hint.info { color: var(--muted); padding: 0 2px; }
+  code { font: 11.5px ui-monospace, "Cascadia Mono", Consolas, monospace; user-select: text; }
+
+  #list { flex: 1; overflow-y: auto; padding: 4px 0; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer; }
+  .row:hover { background: var(--hover); }
+  .row.selected { background: var(--sel); }
+  .port { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 42px; }
+  .proc { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); }
+  .pill.local { background: var(--warn-bg); color: var(--warn); }
+  .empty { padding: 20px 16px; color: var(--muted); text-align: center; }
+  .empty strong { display: block; color: var(--text); margin-bottom: 4px; }
+
+  footer { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  footer label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  footer .spacer { flex: 1; }
+  .link-btn { border: 0; background: transparent; color: var(--muted); font: inherit; cursor: pointer; padding: 2px 4px; border-radius: 4px; }
+  .link-btn:hover { color: var(--text); background: var(--hover); }
+  #toast { position: fixed; left: 50%; bottom: 48px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 5px 12px; border-radius: 999px; font-size: 12px; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Localhost Linker</h1>
+    <span class="ip" id="ip">scanning…</span>
+    <button class="icon-btn" id="close" title="Hide (Esc)">×</button>
+  </header>
+  <section id="focus" hidden></section>
+  <section id="list"></section>
+  <footer>
+    <label><input type="checkbox" id="show-all"> Show all</label>
+    <label><input type="checkbox" id="autostart"> Launch at login</label>
+    <span class="spacer"></span>
+    <button class="link-btn" id="quit">Quit</button>
+  </footer>
+  <div id="toast">Copied</div>
+
+<script>
+  const { invoke } = window.__TAURI__.core;
+  const { listen } = window.__TAURI__.event;
+
+  const $ = (id) => document.getElementById(id);
+  let snapshot = { lan_ip: null, servers: [], error: null };
+  let selectedPort = null;
+  let showAll = false;
+  try { showAll = localStorage.getItem("showAll") === "1"; } catch (_) {}
+  $("show-all").checked = showAll;
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function visibleServers() {
+    return snapshot.servers.filter((s) => showAll || !s.hidden);
+  }
+
+  // How to make a localhost-only server reachable, tailored to what is running it.
+  function hostHint(server) {
+    const p = server.process_name.toLowerCase();
+    if (p === "node" || p === "bun" || p === "deno") {
+      return "Vite: <code>npm run dev -- --host</code><br>Angular: <code>ng serve --host 0.0.0.0</code>";
+    }
+    if (p.startsWith("python")) {
+      return "Django: <code>runserver 0.0.0.0:" + server.port + "</code><br>Flask: <code>flask run --host 0.0.0.0</code>";
+    }
+    if (p === "php") return "<code>php -S 0.0.0.0:" + server.port + "</code>";
+    if (p === "ruby") return "Rails: <code>rails s -b 0.0.0.0</code>";
+    if (p === "dotnet") return "<code>dotnet run --urls http://0.0.0.0:" + server.port + "</code>";
+    return "Bind the server to <code>0.0.0.0</code> instead of localhost.";
+  }
+
+  function renderFocus(list) {
+    const focus = $("focus");
+    const server = list.find((s) => s.port === selectedPort);
+    if (!server) { focus.hidden = true; return; }
+    focus.hidden = false;
+
+    let visual, hint;
+    if (server.reachable_from_lan && server.qr_svg) {
+      visual = '<div class="qr">' + server.qr_svg + "</div>";
+      hint = '<div class="hint info">Phone on the same Wi-Fi can’t connect? Allow <b>' + esc(server.process_name) + "</b> through Windows Firewall.</div>";
+    } else if (!snapshot.lan_ip) {
+      visual = '<div class="no-qr">Not connected to a network.<br>Join Wi-Fi to get a phone link.</div>';
+      hint = "";
+    } else {
+      visual = '<div class="no-qr">Port ' + server.port + " only listens on localhost, so a phone can’t reach it.</div>";
+      hint = '<div class="hint warn">' + hostHint(server) + "</div>";
+    }
+    focus.innerHTML =
+      visual +
+      '<div class="url-row"><div class="url" title="' + esc(server.url) + '">' + esc(server.url) + "</div>" +
+      '<button class="btn" id="copy">Copy</button></div>' + hint;
+    $("copy").onclick = () => copy(server.url);
+  }
+
+  function renderList(list) {
+    const el = $("list");
+    if (snapshot.error) {
+      el.innerHTML = '<div class="empty"><strong>Couldn’t read open ports</strong>' + esc(snapshot.error) + "</div>";
+      return;
+    }
+    if (list.length === 0) {
+      const hiddenCount = snapshot.servers.length;
+      el.innerHTML =
+        '<div class="empty"><strong>No dev servers running</strong>Start one and it will appear here within a couple of seconds.' +
+        (hiddenCount && !showAll ? "<br><br>" + hiddenCount + " system ports hidden." : "") + "</div>";
+      return;
+    }
+    el.innerHTML = list.map((s) =>
+      '<div class="row' + (s.port === selectedPort ? " selected" : "") + '" data-port="' + s.port + '" title="PID ' + s.pid + " · bound to " + esc(s.bind_addr) + '">' +
+        '<span class="port">' + s.port + "</span>" +
+        '<span class="proc">' + esc(s.process_name) + "</span>" +
+        (s.reachable_from_lan ? '<span class="pill ok">LAN</span>' : '<span class="pill local">localhost only</span>') +
+      "</div>"
+    ).join("");
+    el.querySelectorAll(".row").forEach((row) => {
+      row.onclick = () => { selectedPort = Number(row.dataset.port); render(); };
+      row.ondblclick = () => {
+        const s = list.find((x) => x.port === Number(row.dataset.port));
+        if (s) copy(s.url);
+      };
+    });
+  }
+
+  function render() {
+    const list = visibleServers();
+    if (!list.some((s) => s.port === selectedPort)) {
+      const first = list.find((s) => s.reachable_from_lan) || list[0];
+      selectedPort = first ? first.port : null;
+    }
+    $("ip").textContent = snapshot.scanned_at ? (snapshot.lan_ip || "offline") : "scanning…";
+    renderFocus(list);
+    renderList(list);
+  }
+
+  let toastTimer;
+  async function copy(url) {
+    try {
+      await invoke("copy_url", { url });
+      $("toast").textContent = "Copied " + url;
+    } catch (e) {
+      $("toast").textContent = "Copy failed";
+    }
+    $("toast").classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => $("toast").classList.remove("show"), 1400);
+  }
+
+  $("show-all").onchange = (e) => {
+    showAll = e.target.checked;
+    try { localStorage.setItem("showAll", showAll ? "1" : "0"); } catch (_) {}
+    render();
+  };
+  $("autostart").onchange = async (e) => {
+    try { e.target.checked = await invoke("set_autostart", { enabled: e.target.checked }); }
+    catch (_) { e.target.checked = await invoke("get_autostart"); }
+  };
+  $("close").onclick = () => invoke("hide_popup");
+  $("quit").onclick = () => invoke("quit");
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") invoke("hide_popup");
+    if ((e.ctrlKey || e.metaKey) && e.key === "c" && !window.getSelection().toString()) {
+      const s = visibleServers().find((x) => x.port === selectedPort);
+      if (s) copy(s.url);
+    }
+  });
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  listen("servers-changed", (event) => { snapshot = event.payload; render(); });
+  listen("autostart-changed", (event) => { $("autostart").checked = event.payload; });
+
+  (async () => {
+    snapshot = await invoke("get_snapshot");
+    $("autostart").checked = await invoke("get_autostart");
+    render();
+  })();
+</script>
+</body>
+</html>
