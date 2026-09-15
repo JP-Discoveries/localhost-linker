@@ -75,6 +75,8 @@ fn hide(app: &AppHandle, window: &WebviewWindow) {
 
 fn show_popup(app: &AppHandle, near_tray: bool) {
     let Some(window) = app.get_webview_window("main") else { return };
+    let latest = app.state::<AppState>().snapshot.lock().unwrap().clone();
+    let _ = app.emit("servers-changed", &latest);
     let placed = near_tray && window.move_window_constrained(Position::TrayBottomCenter).is_ok();
     if !placed {
         let _ = window.move_window(Position::BottomRight);
@@ -161,8 +163,17 @@ fn publish(app: &AppHandle, snap: Snapshot) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         let _ = tray.set_tooltip(Some(tooltip_for(&snap)));
     }
-    let _ = app.emit("servers-changed", &snap);
-    *app.state::<AppState>().snapshot.lock().unwrap() = snap;
+    // A hidden popup doesn't need live updates: every event costs WebView2 memory it is slow to
+    // give back. show_popup() pushes the latest snapshot right before the window appears.
+    // Store before checking visibility, so a popup opening mid-publish still gets this snapshot.
+    *app.state::<AppState>().snapshot.lock().unwrap() = snap.clone();
+    let visible = app
+        .get_webview_window("main")
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false);
+    if visible {
+        let _ = app.emit("servers-changed", &snap);
+    }
 }
 
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
