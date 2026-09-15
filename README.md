@@ -87,8 +87,8 @@ publishes them as one GitHub release.
 
 ## Known limits
 
-- Windows is tested on real hardware. The macOS and Linux builds pass CI but have not yet been
-  tried on a real Mac or Linux desktop, so please open an issue if something looks wrong.
+- Windows is tested on real hardware, and Linux on Ubuntu 24.04 (GNOME) in a VM. The macOS build
+  passes CI but has not yet been tried on a Mac, so please open an issue if something looks wrong.
 - Linux tray icons don't report clicks, so the popup opens from the tray menu. Stock GNOME needs
   the AppIndicator extension to show tray icons at all; KDE, Cinnamon, XFCE and Ubuntu's GNOME
   work out of the box.

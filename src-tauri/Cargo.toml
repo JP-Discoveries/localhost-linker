@@ -1,6 +1,6 @@
 [package]
 name = "localhost-linker"
-version = "0.1.0"
+version = "0.1.1"
 description = "Tray app that turns local dev servers into phone-scannable QR codes"
 edition = "2021"
 license = "MIT"
