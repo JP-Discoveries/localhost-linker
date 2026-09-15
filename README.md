@@ -1,41 +1,59 @@
 # Localhost Linker
 
-A tray app that finds the dev servers running on your machine and gives you a QR code your
-phone can scan to open them over Wi-Fi. No more typing `192.168.1.5:3000` on a phone keyboard.
+A Windows tray app that finds the dev servers running on your machine and gives you a QR code
+your phone can scan to open them over Wi-Fi. No more typing `192.168.1.5:3000` on a phone keyboard.
 
-Click the tray icon to open the popup. Servers that a phone can reach show a QR code and a
-**LAN** pill. Servers bound only to `localhost` (Vite's default) show a **localhost only** pill
-and the flag to fix it, such as `npm run dev -- --host`.
+<p align="center"><img src="docs/screenshot.png" width="336" alt="Localhost Linker popup showing a QR code for a dev server on port 3000"></p>
 
-## How it works
+## Download
 
-- Every 2 seconds it reads the OS table of listening TCP sockets (no admin needed) and the
-  owning process. Only dev runtimes (node, python, dotnet, ...) or well-known dev ports are
-  shown; tick **Show all** for everything else.
-- A server is reachable from the LAN if it listens on `0.0.0.0`, `::`, or the LAN IP itself.
-- The LAN IP skips VPN, WSL, Hyper-V and other virtual adapters and prefers `192.168.x.x`,
-  then `10.x.x.x`, then `172.16-31.x.x`, using the OS default route only to break ties.
-  This matters because a VPN like NordLynx usually owns the default route.
-- The popup only refreshes when the set of servers or the IP actually changes.
+Get the installer or the portable zip from the
+[latest release](https://github.com/JP-Discoveries/localhost-linker/releases/latest).
+Windows 10 or 11 with the WebView2 runtime is required; Windows 11 already has it.
 
-Tray menu: Show servers, Launch at login, Quit. In the popup: click a row to select it,
-double-click or press Ctrl+C to copy its URL, Esc to hide.
+## Features
 
-## Develop
+### Finds your servers automatically
+- Reads the OS table of listening TCP ports every 2 seconds, with no admin rights needed.
+- Shows the process that owns each port: node, python, dotnet and so on.
+- Hides OS plumbing and background apps. Tick **Show all** to see everything.
 
-Requires Rust (stable, MSVC), the Tauri CLI, and the Visual Studio C++ build tools.
+### Tells you whether a phone can actually reach it
+- **LAN** means the server listens on all interfaces, so the QR code works.
+- **localhost only** means a phone can't connect. The popup shows the flag that fixes it,
+  such as `npm run dev -- --host` for Vite.
+
+### Picks the right IP address
+- Skips VPN, WSL, Hyper-V and other virtual adapters.
+- Prefers `192.168.x.x`, then `10.x.x.x`, then `172.16-31.x.x`, using the OS default route
+  only to break ties. This matters because a VPN usually owns the default route.
+
+### Stays out of the way
+- Click the tray icon to open the popup; click away or press Esc to hide it.
+- Copy a URL with the button, a double-click, or Ctrl+C.
+- Optional **Launch at login**, from the popup or the tray menu.
+- Around 0.1% CPU when idle, and it only talks to the popup while it is open.
+
+## Tech stack
+
+Rust and [Tauri v2](https://v2.tauri.app/). The popup is a single HTML file with no build step.
+Key crates: `listeners` for the socket table, `local-ip-address`, and `qrcode`.
+
+## Building
+
+Requires Rust stable (MSVC toolchain), the Visual Studio C++ build tools, and the Tauri CLI.
 
 ```sh
 cargo install tauri-cli --version "^2.0.0" --locked
 
 cd src-tauri
-cargo test                                  # unit tests
+cargo test                                     # unit tests
 cargo test live_scan -- --ignored --nocapture  # print what the app sees on this machine
-cargo tauri dev                             # run it
-cargo tauri build                           # NSIS installer in target/release/bundle/nsis
+cargo tauri dev                                # run it
+cargo tauri build                              # NSIS installer in target/release/bundle/nsis
 ```
 
-## Layout
+## Project layout
 
 | Path | Purpose |
 |---|---|
@@ -43,12 +61,12 @@ cargo tauri build                           # NSIS installer in target/release/b
 | `src-tauri/src/scanner.rs` | Socket table to server list: filtering, dedupe, reachability |
 | `src-tauri/src/ip.rs` | LAN IPv4 selection |
 | `src-tauri/src/qr.rs` | QR code as inline SVG |
-| `ui/index.html` | The popup, plain HTML with no build step |
+| `ui/index.html` | The popup |
 
 ## Known limits
 
-- Windows is the only platform built and tested so far. The crates are cross-platform.
-- If a phone still cannot connect to a LAN server, Windows Firewall is usually blocking
-  the dev server's process. The app cannot change that for you.
-- Servers inside WSL 2 in its default NAT mode are not reachable from a phone. Enable
+- Only Windows is built and tested. The crates are cross-platform.
+- If a phone still can't connect to a **LAN** server, Windows Firewall is usually blocking
+  the dev server's process. The app can't change that for you.
+- Servers inside WSL 2 in its default NAT mode aren't reachable from a phone. Turn on
   mirrored networking in WSL to fix that.
