@@ -19,7 +19,7 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
   body {
-    font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Ubuntu, Cantarell, sans-serif;
     background: var(--bg); color: var(--text);
     display: flex; flex-direction: column; overflow: hidden;
     border: 1px solid var(--line); user-select: none; cursor: default;
@@ -35,13 +35,13 @@
   .qr svg { width: 100%; height: 100%; display: block; }
   .no-qr { width: 196px; height: 196px; border-radius: 8px; background: var(--panel); color: var(--muted); display: grid; place-items: center; text-align: center; padding: 16px; }
   .url-row { display: flex; gap: 6px; width: 100%; }
-  .url { flex: 1; min-width: 0; font: 12px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--panel); border-radius: 6px; padding: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+  .url { flex: 1; min-width: 0; font: 12px/1 ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace; background: var(--panel); border-radius: 6px; padding: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
   .btn { border: 0; border-radius: 6px; padding: 0 12px; background: var(--accent); color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; }
   .btn:hover { filter: brightness(1.08); }
   .hint { width: 100%; font-size: 12px; border-radius: 6px; padding: 7px 9px; }
   .hint.warn { background: var(--warn-bg); color: var(--warn); }
   .hint.info { color: var(--muted); padding: 0 2px; }
-  code { font: 11.5px ui-monospace, "Cascadia Mono", Consolas, monospace; user-select: text; }
+  code { font: 11.5px ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace; user-select: text; }
 
   #list { flex: 1; overflow-y: auto; padding: 4px 0; }
   .row { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer; }
@@ -112,6 +112,16 @@
     return "Bind the server to <code>0.0.0.0</code> instead of localhost.";
   }
 
+  // Each OS's webview names it in the user agent: WebView2, WKWebView or WebKitGTK.
+  const os = /Windows/.test(navigator.userAgent) ? "windows" : /Mac/.test(navigator.userAgent) ? "macos" : "linux";
+
+  function firewallHint(server) {
+    const name = "<b>" + esc(server.process_name) + "</b>";
+    if (os === "windows") return "Allow " + name + " through Windows Firewall.";
+    if (os === "macos") return "If the macOS firewall is on, allow " + name + " in System Settings › Network › Firewall.";
+    return "Check your firewall, e.g. <code>sudo ufw allow " + server.port + "/tcp</code>";
+  }
+
   function renderFocus(list) {
     const focus = $("focus");
     const server = list.find((s) => s.port === selectedPort);
@@ -121,7 +131,7 @@
     let visual, hint;
     if (server.reachable_from_lan && server.qr_svg) {
       visual = '<div class="qr">' + server.qr_svg + "</div>";
-      hint = '<div class="hint info">Phone on the same Wi-Fi can’t connect? Allow <b>' + esc(server.process_name) + "</b> through Windows Firewall.</div>";
+      hint = '<div class="hint info">Phone on the same Wi-Fi can’t connect? ' + firewallHint(server) + "</div>";
     } else if (!snapshot.lan_ip) {
       visual = '<div class="no-qr">Not connected to a network.<br>Join Wi-Fi to get a phone link.</div>';
       hint = "";

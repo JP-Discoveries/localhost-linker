@@ -12,6 +12,8 @@ use crate::qr;
 
 /// Ports that are always OS plumbing, even if a dev runtime somehow owns them.
 const NOISE_PORTS: &[u16] = &[135, 139, 445, 5040, 5353, 5354, 5357, 7680];
+/// OS services that sit on well-known dev ports, such as macOS AirPlay Receiver on 5000 and 7000.
+const OS_PROCESSES: &[&str] = &["controlcenter", "airplayxpchelper", "rapportd", "sharingd"];
 /// Processes that run web and app servers during development. Anything these own is shown.
 const DEV_RUNTIMES: &[&str] = &[
     "node", "bun", "deno", "python", "python3", "pythonw", "py", "uvicorn", "gunicorn", "php",
@@ -99,7 +101,10 @@ fn base_name(name: &str) -> String {
 fn is_noise(port: u16, name: &str) -> bool {
     let base = base_name(name);
     let dev_runtime = DEV_RUNTIMES.contains(&base.as_str()) || base.starts_with("python");
-    NOISE_PORTS.contains(&port) || port < 1024 || !(dev_runtime || DEV_PORTS.contains(&port))
+    NOISE_PORTS.contains(&port)
+        || port < 1024
+        || OS_PROCESSES.contains(&base.as_str())
+        || !(dev_runtime || DEV_PORTS.contains(&port))
 }
 
 fn display_name(name: &str) -> String {
@@ -206,6 +211,13 @@ mod tests {
         let shown: Vec<u16> = out.iter().filter(|e| !e.hidden).map(|e| e.port).collect();
         assert_eq!(shown, vec![5173, 41234], "node on any port shows; background apps hide");
         assert!(out[2..].iter().all(|e| e.hidden), "hidden entries sort last");
+    }
+
+    #[test]
+    fn macos_airplay_receiver_on_dev_ports_is_hidden() {
+        let out = build(&[sock("0.0.0.0", 5000, "ControlCenter"), sock("::", 7000, "ControlCenter"), sock("0.0.0.0", 8080, "java")], Some(LAN));
+        let shown: Vec<u16> = out.iter().filter(|e| !e.hidden).map(|e| e.port).collect();
+        assert_eq!(shown, vec![8080]);
     }
 
     #[test]

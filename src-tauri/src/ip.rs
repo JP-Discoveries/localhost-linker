@@ -3,10 +3,13 @@
 use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 
 /// Interface names that belong to virtual or VPN adapters a phone on the same Wi-Fi can never reach.
+/// Covers Windows friendly names ("vEthernet (WSL)") and macOS/Linux device names ("virbr0").
 const VIRTUAL_HINTS: &[&str] = &[
-    "vethernet", "wsl", "hyper-v", "virtualbox", "vmware", "docker", "loopback", "bluetooth",
-    "tailscale", "zerotier", "wireguard", "nordlynx", "nordvpn", "openvpn", "tap-", "proton",
-    "mullvad", "expressvpn", "surfshark", "cloudflare", "warp", "vpn", "tunnel", "utun", "tun0",
+    "veth", "wsl", "hyper-v", "virtualbox", "vboxnet", "vmware", "vmnet", "docker", "br-",
+    "virbr", "lxcbr", "lxdbr", "podman", "cni", "flannel", "loopback", "bluetooth", "awdl",
+    "llw", "anpi", "tailscale", "zerotier", "wireguard", "wg0", "nordlynx", "nordvpn", "openvpn",
+    "tap-", "proton", "mullvad", "expressvpn", "surfshark", "cloudflare", "warp", "vpn", "tunnel",
+    "utun", "tun0",
 ];
 
 pub fn lan_ipv4() -> Option<Ipv4Addr> {
@@ -93,6 +96,14 @@ mod tests {
     fn ignores_vpn_that_owns_the_default_route() {
         let ifs = [nic("NordLynx", "10.5.0.2"), nic("vEthernet (WSL (Hyper-V firewall))", "172.22.48.1"), nic("Ethernet", "192.168.0.105")];
         assert_eq!(choose(Some("10.5.0.2".parse().unwrap()), &ifs), Some("192.168.0.105".parse().unwrap()));
+    }
+
+    #[test]
+    fn skips_linux_and_macos_virtual_bridges() {
+        let ifs = [nic("virbr0", "192.168.122.1"), nic("vmnet8", "192.168.56.1"), nic("docker0", "172.17.0.1"), nic("wlp2s0", "192.168.1.20")];
+        assert_eq!(choose(Some("10.8.0.2".parse().unwrap()), &ifs), Some("192.168.1.20".parse().unwrap()));
+        let mac = [nic("utun4", "10.5.0.2"), nic("en0", "192.168.4.31")];
+        assert_eq!(choose(Some("10.5.0.2".parse().unwrap()), &mac), Some("192.168.4.31".parse().unwrap()));
     }
 
     #[test]

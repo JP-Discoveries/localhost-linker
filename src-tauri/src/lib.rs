@@ -1,4 +1,5 @@
 mod ip;
+mod placement;
 mod qr;
 mod scanner;
 
@@ -9,10 +10,9 @@ use std::time::{Duration, Instant};
 use scanner::Snapshot;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewWindow, Wry};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, RunEvent, State, WebviewWindow, Wry};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use tauri_plugin_positioner::{Position, WindowExt};
 
 const TRAY_ID: &str = "tray";
 const POLL_EVERY: Duration = Duration::from_secs(2);
@@ -73,19 +73,47 @@ fn hide(app: &AppHandle, window: &WebviewWindow) {
     *app.state::<AppState>().last_hidden.lock().unwrap() = Some(Instant::now());
 }
 
-fn show_popup(app: &AppHandle, near_tray: bool) {
+/// Shows the popup next to the tray icon that was clicked, or in a screen corner without one
+/// (tray menu, second launch, and Linux, where tray icons report no clicks).
+fn show_popup(app: &AppHandle, tray_icon: Option<Rect>) {
     let Some(window) = app.get_webview_window("main") else { return };
     let latest = app.state::<AppState>().snapshot.lock().unwrap().clone();
     let _ = app.emit("servers-changed", &latest);
-    let placed = near_tray && window.move_window_constrained(Position::TrayBottomCenter).is_ok();
-    if !placed {
-        let _ = window.move_window(Position::BottomRight);
-    }
+    let _ = place(&window, tray_icon);
     let _ = window.show();
     let _ = window.set_focus();
 }
 
-fn toggle_popup_from_tray(app: &AppHandle) {
+fn place(window: &WebviewWindow, tray_icon: Option<Rect>) -> tauri::Result<()> {
+    let scale = window.scale_factor()?;
+    let size = window.outer_size()?;
+    let popup = (size.width as f64, size.height as f64);
+    let icon = tray_icon.map(|rect| {
+        let pos = rect.position.to_physical::<f64>(scale);
+        let size = rect.size.to_physical::<f64>(scale);
+        placement::Area { x: pos.x, y: pos.y, width: size.width, height: size.height }
+    });
+    let monitor = match icon {
+        Some(i) => window.monitor_from_point(i.x + i.width / 2.0, i.y + i.height / 2.0)?,
+        None => None,
+    };
+    let Some(monitor) = monitor.or(window.primary_monitor()?) else { return Ok(()) };
+    let area = monitor.work_area();
+    let work = placement::Area {
+        x: area.position.x as f64,
+        y: area.position.y as f64,
+        width: area.size.width as f64,
+        height: area.size.height as f64,
+    };
+    let (x, y) = match icon {
+        Some(icon) => placement::near_tray(icon, popup, work),
+        // The tray sits at the bottom on Windows and at the top on macOS and most Linux desktops.
+        None => placement::corner(popup, work, cfg!(target_os = "windows")),
+    };
+    window.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32))
+}
+
+fn toggle_popup_from_tray(app: &AppHandle, tray_icon: Rect) {
     let Some(window) = app.get_webview_window("main") else { return };
     if window.is_visible().unwrap_or(false) {
         hide(app, &window);
@@ -98,7 +126,7 @@ fn toggle_popup_from_tray(app: &AppHandle) {
         .unwrap()
         .is_some_and(|t| t.elapsed() < REOPEN_GRACE);
     if !just_hidden {
-        show_popup(app, true);
+        show_popup(app, Some(tray_icon));
     }
 }
 
@@ -200,7 +228,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => show_popup(app, false),
+            "open" => show_popup(app, None),
             "autostart" => {
                 let want = !app.autolaunch().is_enabled().unwrap_or(false);
                 let _ = apply_autostart(app, want);
@@ -209,14 +237,14 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
+                rect,
                 ..
             } = event
             {
-                toggle_popup_from_tray(tray.app_handle());
+                toggle_popup_from_tray(tray.app_handle(), rect);
             }
         });
     if let Some(icon) = app.default_window_icon() {
@@ -228,8 +256,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 
 pub fn run() {
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_popup(app, false)))
-        .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_popup(app, None)))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .manage(AppState {
@@ -246,6 +273,9 @@ pub fn run() {
             quit
         ])
         .setup(|app| {
+            // A menu bar app: no Dock icon and no entry in the Cmd+Tab switcher.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             build_tray(app)?;
             start_polling(app.handle().clone());
             Ok(())
